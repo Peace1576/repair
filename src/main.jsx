@@ -511,6 +511,49 @@ function App() {
     setToast("Project reset");
   }
 
+  function activateTool(label) {
+    setActiveTool(label);
+    if (label === "Select") {
+      setWorkspaceMode("Edit");
+      setActiveView("Preview");
+      setToast("Select tool active");
+    }
+    if (label === "Cut") {
+      setWorkspaceMode("Edit");
+      splitSelectedClip();
+    }
+    if (label === "Captions") {
+      setWorkspaceMode("Captions");
+      setActiveView("Preview");
+      applyAiAction("Generate captions");
+    }
+    if (label === "AI tools") {
+      setWorkspaceMode("Edit");
+      setActiveView("AI Notes");
+      setToast("AI notes and actions opened");
+    }
+    if (label === "Crop") {
+      setWorkspaceMode("Edit");
+      setActiveView("Preview");
+      setToast("Crop/framing controls opened");
+    }
+    if (label === "Color") {
+      setWorkspaceMode("Color");
+      setActiveView("Preview");
+      setToast("Color workspace opened");
+    }
+    if (label === "Music") {
+      setWorkspaceMode("Audio");
+      setActiveView("Preview");
+      setToast("Audio workspace opened");
+    }
+    if (label === "Settings") {
+      setWorkspaceMode("Export");
+      setActiveView("Preview");
+      setToast("Export settings opened");
+    }
+  }
+
   function exportManifest() {
     const blob = new Blob([JSON.stringify({ ...project, exportedAt: new Date().toISOString(), preset }, null, 2)], { type: "application/json" });
     downloadBlob(blob, `${slug(project.name)}-project.json`);
@@ -579,7 +622,7 @@ function App() {
       <aside className="rail" aria-label="Primary tools">
         <div className="brand-mark">R</div>
         {[[MousePointer2, "Select"], [Scissors, "Cut"], [Captions, "Captions"], [WandSparkles, "AI tools"], [Crop, "Crop"], [Aperture, "Color"], [Music2, "Music"], [Settings2, "Settings"]].map(([Icon, label]) => (
-          <IconButton key={label} icon={Icon} label={label} active={activeTool === label} onClick={() => setActiveTool(label)} />
+          <IconButton key={label} icon={Icon} label={label} active={activeTool === label} onClick={() => activateTool(label)} />
         ))}
       </aside>
 
@@ -707,6 +750,7 @@ function App() {
             selectedAsset={selectedAsset}
             selectedClip={selectedClip}
             selectedOverlay={selectedOverlay}
+            activeTool={activeTool}
             workspaceMode={workspaceMode}
             history={history}
             future={future}
@@ -766,12 +810,13 @@ function App() {
   );
 }
 
-function Inspector({ project, selectedAsset, selectedClip, selectedOverlay, workspaceMode, future, onFilter, onProject, onClip, onSplit, onCopy, onRipple, onNudge, onAddOverlay, onOverlay, onRemoveOverlay, onFilterPreset, onRedo, onAi, onExport, onExportSetting, onAddMarker, onRemoveMarker, onSeek }) {
+function Inspector({ project, selectedAsset, selectedClip, selectedOverlay, activeTool, workspaceMode, future, onFilter, onProject, onClip, onSplit, onCopy, onRipple, onNudge, onAddOverlay, onOverlay, onRemoveOverlay, onFilterPreset, onRedo, onAi, onExport, onExportSetting, onAddMarker, onRemoveMarker, onSeek }) {
   return (
     <aside className="inspector-panel">
       <div className="panel-header"><div><p className="eyebrow">Inspector</p><h2>{selectedAsset?.title || "Selected Clip"}</h2></div><ChevronDown size={18} /></div>
       <div className="score-card"><Stars size={20} /><div><strong>Creator Score {creatorScore(project)}</strong><p>{workspaceMode === "Export" ? "Export settings are ready for creator delivery." : "Edit, color, audio, captions, and export are connected."}</p></div></div>
       <div className="connection-card"><span className={isSupabaseConfigured ? "status-dot online" : "status-dot"} /><div><strong>Supabase {isSupabaseConfigured ? "configured" : "not configured"}</strong><p>Client config is loaded. Server-only keys remain outside browser code.</p></div></div>
+      <ToolPanel activeTool={activeTool} onSplit={onSplit} onAi={onAi} onAddOverlay={onAddOverlay} onFilterPreset={onFilterPreset} onExport={onExport} />
 
       {workspaceMode === "Export" ? (
         <div className="export-editor">
@@ -845,8 +890,53 @@ function SelectField({ label, value, values, onChange }) {
   return <label><span>{label}</span><select value={value} onChange={(event) => onChange(event.target.value)}>{values.map((item) => <option key={item}>{item}</option>)}</select></label>;
 }
 
+function ToolPanel({ activeTool, onSplit, onAi, onAddOverlay, onFilterPreset, onExport }) {
+  const toolCopy = {
+    "Select": "Select clips, overlays, and media. Drag clips on the timeline or overlays in Program.",
+    "Cut": "Split the selected clip at the playhead.",
+    "Captions": "Generate timed caption clips and edit caption text.",
+    "AI tools": "Run creator automation for hooks, silence removal, clips, and captions.",
+    "Crop": "Use platform presets and drag overlays inside Program for framing.",
+    "Color": "Apply color presets and tune exposure, contrast, saturation, and warmth.",
+    "Music": "Work with audio tracks and cleanup actions.",
+    "Settings": "Configure export and render preview output."
+  };
+
+  return (
+    <div className="tool-panel">
+      <div className="clip-editor-top">
+        <h3>{activeTool} Tool</h3>
+        <span>Active</span>
+      </div>
+      <p>{toolCopy[activeTool]}</p>
+      {activeTool === "Cut" && <button onClick={onSplit}><Scissors size={15} /> Split selected clip</button>}
+      {activeTool === "Captions" && <button onClick={() => onAi("Generate captions")}><Subtitles size={15} /> Generate timed captions</button>}
+      {activeTool === "AI tools" && (
+        <div className="tool-mini-grid">
+          <button onClick={() => onAi("Find viral hook")}>Find hook</button>
+          <button onClick={() => onAi("Remove silence")}>Remove silence</button>
+          <button onClick={() => onAi("Make 10 clips")}>Make clips</button>
+          <button onClick={() => onAi("Clean audio")}>Clean audio</button>
+        </div>
+      )}
+      {activeTool === "Crop" && (
+        <div className="tool-mini-grid">
+          <button onClick={() => onAddOverlay("text")}>Add title</button>
+          <button onClick={() => onAddOverlay("badge")}>Add badge</button>
+        </div>
+      )}
+      {activeTool === "Color" && (
+        <div className="tool-mini-grid">
+          {["Clean", "Cinematic", "Vivid", "Warm"].map((preset) => <button key={preset} onClick={() => onFilterPreset(preset)}>{preset}</button>)}
+        </div>
+      )}
+      {activeTool === "Settings" && <button onClick={onExport}><Download size={15} /> Render preview</button>}
+    </div>
+  );
+}
+
 function IconButton({ icon: Icon, label, active, onClick }) {
-  return <button className={`icon-button ${active ? "is-active" : ""}`} aria-label={label} title={label} onClick={onClick}><Icon size={18} strokeWidth={2.2} /></button>;
+  return <button className={`icon-button ${active ? "is-active" : ""}`} aria-label={`Tool: ${label}`} title={label} onClick={onClick}><Icon size={18} strokeWidth={2.2} /></button>;
 }
 
 function AssetIcon({ type }) {

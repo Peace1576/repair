@@ -958,7 +958,8 @@ h3 {
 }
 
 .export-editor,
-.marker-list {
+.marker-list,
+.tool-panel {
   display: grid;
   gap: 10px;
   margin-top: 16px;
@@ -966,6 +967,38 @@ h3 {
   border: 1px solid var(--line);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.045);
+}
+
+.tool-panel {
+  border-color: rgba(69, 215, 255, 0.28);
+  background: rgba(69, 215, 255, 0.065);
+}
+
+.tool-panel p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.tool-panel > button,
+.tool-mini-grid button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #dce4eb;
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.tool-mini-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .export-editor label {
