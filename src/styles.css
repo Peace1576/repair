@@ -513,14 +513,64 @@ h3 {
   margin: 0 auto;
 }
 
+.program-frame.is-landscape {
+  width: min(55vw, 620px);
+  min-width: 420px;
+  border-radius: 28px;
+}
+
+.program-frame.is-square {
+  width: min(44vh, 430px);
+  min-width: 330px;
+  border-radius: 32px;
+}
+
+.program-frame.is-vertical {
+  width: min(42vh, 330px);
+}
+
 .video-scene {
   position: relative;
+  container-type: inline-size;
   height: 100%;
   overflow: hidden;
   border-radius: 30px;
   background:
     linear-gradient(160deg, rgba(5, 8, 12, 0.02), rgba(5, 8, 12, 0.82)),
     url("https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&w=900&q=85") center / cover;
+}
+
+.overlay-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.program-overlay {
+  position: absolute;
+  translate: -50% -50%;
+  max-width: 80%;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 12px;
+  padding: 0.35em 0.65em;
+  font-weight: 950;
+  line-height: 1;
+  pointer-events: auto;
+  touch-action: none;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
+.program-overlay.shape {
+  width: 22%;
+  height: 12%;
+  color: transparent !important;
+  border-radius: 999px;
+}
+
+.program-overlay.selected {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
 }
 
 .editable-scene {
@@ -773,6 +823,24 @@ h3 {
   text-align: right;
 }
 
+.filter-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.filter-presets button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #dce4eb;
+  font-size: 11px;
+  font-weight: 780;
+}
+
 .caption-editor {
   display: grid;
   gap: 8px;
@@ -818,7 +886,8 @@ h3 {
   opacity: 0.45;
 }
 
-.clip-editor {
+.clip-editor,
+.overlay-editor {
   display: grid;
   gap: 10px;
   margin-top: 16px;
@@ -842,7 +911,8 @@ h3 {
   text-transform: uppercase;
 }
 
-.clip-editor label {
+.clip-editor label,
+.overlay-editor label {
   display: grid;
   grid-template-columns: 64px 1fr;
   align-items: center;
@@ -852,7 +922,8 @@ h3 {
   font-weight: 760;
 }
 
-.clip-editor input {
+.clip-editor input,
+.overlay-editor input {
   min-width: 0;
   height: 32px;
   border: 1px solid var(--line);
@@ -1001,9 +1072,7 @@ h3 {
 
 .track-lane {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: block;
   min-height: 42px;
   padding: 5px;
   border: 1px solid var(--line);
@@ -1018,14 +1087,16 @@ h3 {
 
 .clip {
   position: relative;
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
   z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-width: 78px;
-  height: 100%;
-  min-height: 30px;
+  min-width: 58px;
+  min-height: 0;
   padding: 0 10px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--clip-color) 28%, transparent);
