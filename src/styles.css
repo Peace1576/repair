@@ -690,6 +690,75 @@ h3 {
   text-align: left;
 }
 
+.tool-section button:disabled,
+.clip-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.clip-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.clip-editor-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.clip-editor-top span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.clip-editor label {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: center;
+  gap: 8px;
+  color: #c8d2dc;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.clip-editor input {
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: 0;
+  padding: 0 9px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.clip-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.clip-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 12px;
+  font-weight: 780;
+}
+
 .timeline-panel {
   padding: 14px;
   min-height: 194px;
@@ -722,6 +791,7 @@ h3 {
 }
 
 .track-lane {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -738,6 +808,8 @@ h3 {
 }
 
 .clip {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -752,6 +824,11 @@ h3 {
   color: #f7fbff;
   font-size: 12px;
   font-weight: 780;
+}
+
+.clip.selected {
+  outline: 2px solid rgba(255, 255, 255, 0.78);
+  outline-offset: 1px;
 }
 
 .clip span {
@@ -773,6 +850,17 @@ h3 {
 .empty-track {
   color: #727d89;
   font-size: 12px;
+}
+
+.playhead {
+  position: absolute;
+  z-index: 1;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.65);
 }
 
 .visually-hidden {

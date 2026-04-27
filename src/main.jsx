@@ -122,7 +122,16 @@ const aiActions = ["Find viral hook", "Remove silence", "Generate captions", "Ma
 function loadProject() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? { ...starterProject, ...JSON.parse(raw) } : starterProject;
+    if (!raw) return starterProject;
+    const saved = JSON.parse(raw);
+    return {
+      ...starterProject,
+      ...saved,
+      filters: { ...starterProject.filters, ...(saved.filters || {}) },
+      assets: saved.assets?.length ? saved.assets : starterProject.assets,
+      timeline: saved.timeline?.length ? saved.timeline : starterProject.timeline,
+      notes: saved.notes?.length ? saved.notes : starterProject.notes
+    };
   } catch {
     return starterProject;
   }
@@ -135,15 +144,21 @@ function App() {
   const canvasRef = useRef(null);
   const [project, setProject] = useState(loadProject);
   const [selectedAssetId, setSelectedAssetId] = useState(project.assets[1]?.id);
+  const [selectedClipId, setSelectedClipId] = useState(project.timeline[0]?.id);
   const [activeTool, setActiveTool] = useState("Select");
   const [activeView, setActiveView] = useState("Preview");
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playhead, setPlayhead] = useState(0);
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState("Project loaded");
 
   const selectedAsset = useMemo(
     () => project.assets.find((asset) => asset.id === selectedAssetId) || project.assets[0],
     [project.assets, selectedAssetId]
+  );
+  const selectedClip = useMemo(
+    () => project.timeline.find((clip) => clip.id === selectedClipId),
+    [project.timeline, selectedClipId]
   );
 
   const filteredAssets = useMemo(() => {
@@ -154,6 +169,14 @@ function App() {
 
   const preset = presetMap[project.preset] || presetMap["TikTok 9:16"];
   const duration = Math.max(30, ...project.timeline.map((clip) => clip.start + clip.duration));
+  const activeClip = useMemo(
+    () => project.timeline.find((clip) => clip.track === "Video" && playhead >= clip.start && playhead < clip.start + clip.duration),
+    [project.timeline, playhead]
+  );
+  const previewAsset = useMemo(
+    () => project.assets.find((asset) => asset.id === activeClip?.assetId) || selectedAsset,
+    [activeClip, project.assets, selectedAsset]
+  );
   const filterStyle = {
     filter: `brightness(${project.filters.exposure + 35}%) contrast(${project.filters.contrast + 55}%) saturate(${project.filters.saturation + 45}%) sepia(${Math.max(0, project.filters.warmth - 50) * 0.7}%)`
   };
@@ -165,6 +188,17 @@ function App() {
     }, 500);
     return () => window.clearTimeout(saveTimer);
   }, [project]);
+
+  useEffect(() => {
+    if (!isPlaying) return undefined;
+    const timer = window.setInterval(() => {
+      setPlayhead((current) => {
+        const next = current + 0.1;
+        return next >= duration ? 0 : next;
+      });
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [duration, isPlaying]);
 
   useEffect(() => {
     return () => {
@@ -228,12 +262,59 @@ function App() {
       color: asset.type === "audio" ? "#ff6b9d" : asset.type === "text" ? "#f4b860" : "#45d7ff"
     };
     setProject((current) => ({ ...current, timeline: [...current.timeline, clip] }));
+    setSelectedClipId(clip.id);
     setToast(`Added ${asset.title} to ${track}`);
   }
 
   function removeClip(clipId) {
     setProject((current) => ({ ...current, timeline: current.timeline.filter((clip) => clip.id !== clipId) }));
+    if (selectedClipId === clipId) setSelectedClipId(undefined);
     setToast("Clip removed");
+  }
+
+  function updateClip(clipId, patch) {
+    setProject((current) => ({
+      ...current,
+      timeline: current.timeline.map((clip) => clip.id === clipId ? { ...clip, ...patch } : clip)
+    }));
+  }
+
+  function splitSelectedClip() {
+    if (!selectedClip || selectedClip.duration <= 1) return;
+    const relative = playhead > selectedClip.start && playhead < selectedClip.start + selectedClip.duration
+      ? playhead - selectedClip.start
+      : selectedClip.duration / 2;
+    const firstDuration = Math.max(0.5, Number(relative.toFixed(1)));
+    const secondDuration = Math.max(0.5, Number((selectedClip.duration - firstDuration).toFixed(1)));
+    const secondClip = {
+      ...selectedClip,
+      id: `clip-${Date.now()}`,
+      label: `${selectedClip.label} B`,
+      start: Number((selectedClip.start + firstDuration).toFixed(1)),
+      duration: secondDuration
+    };
+    setProject((current) => ({
+      ...current,
+      timeline: [
+        ...current.timeline.map((clip) => clip.id === selectedClip.id ? { ...clip, label: `${selectedClip.label} A`, duration: firstDuration } : clip),
+        secondClip
+      ]
+    }));
+    setSelectedClipId(secondClip.id);
+    setToast("Clip split");
+  }
+
+  function duplicateSelectedClip() {
+    if (!selectedClip) return;
+    const copy = {
+      ...selectedClip,
+      id: `clip-${Date.now()}`,
+      label: `${selectedClip.label} copy`,
+      start: Number((selectedClip.start + selectedClip.duration).toFixed(1))
+    };
+    setProject((current) => ({ ...current, timeline: [...current.timeline, copy] }));
+    setSelectedClipId(copy.id);
+    setToast("Clip duplicated");
   }
 
   function applyAiAction(action) {
@@ -288,7 +369,7 @@ function App() {
   }
 
   function togglePlayback() {
-    const media = selectedAsset?.type === "video" ? videoRef.current : selectedAsset?.type === "audio" ? videoRef.current : null;
+    const media = previewAsset?.type === "video" ? videoRef.current : previewAsset?.type === "audio" ? videoRef.current : null;
     if (media) {
       if (media.paused) {
         media.play();
@@ -312,6 +393,46 @@ function App() {
     setProject(starterProject);
     setSelectedAssetId(starterProject.assets[1].id);
     setToast("Project reset");
+  }
+
+  async function exportVideoPreview() {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx || typeof MediaRecorder === "undefined") {
+      setToast("Video export is not supported in this browser");
+      return;
+    }
+
+    canvas.width = Math.min(1280, preset.width);
+    canvas.height = Math.round(canvas.width * (preset.height / preset.width));
+    const stream = canvas.captureStream(30);
+    const chunks = [];
+    const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+    recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
+    recorder.onstop = () => {
+      downloadBlob(new Blob(chunks, { type: "video/webm" }), `${slug(project.name)}-preview.webm`);
+      setToast("Preview video exported");
+    };
+
+    recorder.start();
+    setToast("Rendering preview video...");
+    const renderLength = Math.min(10, duration);
+    const started = performance.now();
+
+    await new Promise((resolve) => {
+      function drawFrame(now) {
+        const seconds = ((now - started) / 1000) % renderLength;
+        drawCompositionFrame(ctx, canvas, project, preset, seconds);
+        if ((now - started) / 1000 < renderLength) {
+          requestAnimationFrame(drawFrame);
+        } else {
+          resolve();
+        }
+      }
+      requestAnimationFrame(drawFrame);
+    });
+
+    recorder.stop();
   }
 
   function exportManifest() {
@@ -471,10 +592,10 @@ function App() {
               <div className="phone-frame" style={{ aspectRatio: preset.ratio }}>
                 {activeView === "Preview" && (
                   <div className="video-scene editable-scene" style={filterStyle}>
-                    <PreviewMedia asset={selectedAsset} imageRef={imageRef} videoRef={videoRef} onEnded={() => setIsPlaying(false)} />
+                    <PreviewMedia asset={previewAsset} imageRef={imageRef} videoRef={videoRef} onEnded={() => setIsPlaying(false)} />
                     <div className="creator-card">
                       <span>{activeTool.toUpperCase()}</span>
-                      <strong>{selectedAsset?.title || "No media selected"}</strong>
+                      <strong>{previewAsset?.title || "No media selected"}</strong>
                     </div>
                     <div className="caption-bubble" contentEditable suppressContentEditableWarning onBlur={(event) => updateProject({ caption: event.currentTarget.textContent || "" })}>
                       {project.caption}
@@ -509,7 +630,7 @@ function App() {
             </div>
 
             <div className="transport">
-              <button onClick={() => addToTimeline()} title="Add selected"><SplitSquareHorizontal size={18} /></button>
+              <button onClick={splitSelectedClip} title="Split selected clip"><SplitSquareHorizontal size={18} /></button>
               <button onClick={() => { videoRef.current?.pause(); setIsPlaying(false); }} title="Stop"><Square size={18} /></button>
               <button className="play" onClick={togglePlayback} title="Play or pause">
                 {isPlaying ? <Pause size={20} /> : <Play size={20} fill="currentColor" />}
@@ -551,8 +672,31 @@ function App() {
 
             <label className="caption-editor">
               <span>Caption</span>
-              <textarea value={project.caption} onChange={(event) => updateProject({ caption: event.target.value })} />
+              <textarea aria-label="Caption" value={project.caption} onChange={(event) => updateProject({ caption: event.target.value })} />
             </label>
+
+            <div className="clip-editor">
+              <div className="clip-editor-top">
+                <h3>Clip Edit</h3>
+                <span>{selectedClip ? selectedClip.track : "No clip"}</span>
+              </div>
+              <label>
+                <span>Name</span>
+                <input disabled={!selectedClip} value={selectedClip?.label || ""} onChange={(event) => updateClip(selectedClip.id, { label: event.target.value })} />
+              </label>
+              <label>
+                <span>Start</span>
+                <input disabled={!selectedClip} type="number" min="0" step="0.1" value={selectedClip?.start ?? 0} onChange={(event) => updateClip(selectedClip.id, { start: Number(event.target.value) })} />
+              </label>
+              <label>
+                <span>Duration</span>
+                <input disabled={!selectedClip} type="number" min="0.5" step="0.1" value={selectedClip?.duration ?? 0} onChange={(event) => updateClip(selectedClip.id, { duration: Number(event.target.value) })} />
+              </label>
+              <div className="clip-actions">
+                <button onClick={splitSelectedClip} disabled={!selectedClip}><Scissors size={15} /> Split</button>
+                <button onClick={duplicateSelectedClip} disabled={!selectedClip}><Copy size={15} /> Copy</button>
+              </div>
+            </div>
 
             <div className="tool-section">
               <h3>Smart Effects</h3>
@@ -560,6 +704,7 @@ function App() {
               <button onClick={() => applyAiAction("Clean audio")}><Mic2 size={17} /> Studio voice clean</button>
               <button onClick={() => applyAiAction("Make 10 clips")}><Clapperboard size={17} /> Auto b-roll finder</button>
               <button onClick={() => applyAiAction("Brand kit")}><SlidersHorizontal size={17} /> Brand color grade</button>
+              <button onClick={exportVideoPreview}><Download size={17} /> Export WebM preview</button>
             </div>
           </aside>
         </section>
@@ -582,7 +727,21 @@ function App() {
           </div>
           <div className="tracks">
             {["Video", "Captions", "Audio"].map((track) => (
-              <Track key={track} name={track} duration={duration} items={project.timeline.filter((clip) => clip.track === track)} compact={track !== "Video"} onRemove={removeClip} />
+              <Track
+                key={track}
+                name={track}
+                duration={duration}
+                playhead={playhead}
+                items={project.timeline.filter((clip) => clip.track === track)}
+                compact={track !== "Video"}
+                selectedClipId={selectedClipId}
+                onSelect={(clip) => {
+                  setSelectedClipId(clip.id);
+                  setSelectedAssetId(clip.assetId);
+                  setPlayhead(clip.start);
+                }}
+                onRemove={removeClip}
+              />
             ))}
           </div>
         </section>
@@ -649,25 +808,27 @@ function Control({ label, value, onChange }) {
   );
 }
 
-function Track({ name, items, compact, duration, onRemove }) {
+function Track({ name, items, compact, duration, playhead, selectedClipId, onSelect, onRemove }) {
   return (
     <div className={`track ${compact ? "compact" : ""}`}>
       <span className="track-name">{name}</span>
       <div className="track-lane">
+        {name === "Video" && <span className="playhead" style={{ left: `${Math.min(100, (playhead / duration) * 100)}%` }} />}
         {items.length === 0 && <span className="empty-track">Drop or add {name.toLowerCase()} clips</span>}
         {items.map((item) => (
           <div
-            className="clip"
+            className={`clip ${selectedClipId === item.id ? "selected" : ""}`}
             style={{
-              marginLeft: `${(item.start / duration) * 10}%`,
+              marginLeft: `${(item.start / duration) * 6}%`,
               width: `${Math.max(8, (item.duration / duration) * 100)}%`,
               "--clip-color": item.color
             }}
             key={`${name}-${item.id}`}
             title={`${item.label} - ${formatTime(item.duration)}`}
+            onClick={() => onSelect(item)}
           >
             <span>{item.label}</span>
-            <button onClick={() => onRemove(item.id)} aria-label={`Remove ${item.label}`} title={`Remove ${item.label}`}>
+            <button onClick={(event) => { event.stopPropagation(); onRemove(item.id); }} aria-label={`Remove ${item.label}`} title={`Remove ${item.label}`}>
               <Trash2 size={13} />
             </button>
           </div>
@@ -744,6 +905,31 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
     }
   });
   ctx.fillText(line, x, y + offset);
+}
+
+function drawCompositionFrame(ctx, canvas, project, preset, seconds) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  gradient.addColorStop(0, "#06131a");
+  gradient.addColorStop(0.5, "#11141a");
+  gradient.addColorStop(1, "#20381f");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+  ctx.fillRect(canvas.width * 0.08, canvas.height * 0.12, canvas.width * 0.84, canvas.height * 0.5);
+  ctx.fillStyle = "#f6f8fb";
+  ctx.font = `900 ${Math.max(32, canvas.width * 0.055)}px system-ui`;
+  ctx.textAlign = "center";
+  ctx.fillText(project.name, canvas.width / 2, canvas.height * 0.34);
+  ctx.fillStyle = "rgba(7, 9, 13, 0.72)";
+  roundRect(ctx, canvas.width * 0.08, canvas.height * 0.72, canvas.width * 0.84, canvas.height * 0.13, 28);
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `800 ${Math.max(26, canvas.width * 0.04)}px system-ui`;
+  wrapText(ctx, project.caption, canvas.width / 2, canvas.height * 0.79, canvas.width * 0.76, Math.max(36, canvas.width * 0.052));
+  ctx.fillStyle = "#a3ff8f";
+  ctx.font = `800 ${Math.max(18, canvas.width * 0.024)}px system-ui`;
+  ctx.fillText(`${preset.label} - ${formatTime(seconds)}`, canvas.width / 2, canvas.height * 0.93);
 }
 
 createRoot(document.getElementById("root")).render(<App />);
